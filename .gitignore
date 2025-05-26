@@ -1,0 +1,7 @@
+venv
+.env
+
+db
+file_sources
+
+.vscode
