@@ -1,7 +1,7 @@
 venv
 .env
 
-db
+db*
 file_sources
 
 .vscode
