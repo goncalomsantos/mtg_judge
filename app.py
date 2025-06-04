@@ -161,23 +161,45 @@ def load_and_chunk_magic_rules_txt() -> List[Document]:
     glossary_offset = glossary_matches[1].start() if len(glossary_matches) > 1 else None
     credits_offset = credits_matches[1].start() if len(credits_matches) > 1 else None
 
-    # 1. Chunk main rules (from start_offset to glossary_offset)
-    section_pattern = re.compile(r"^\d{3}\. .+", re.MULTILINE)
-    matches_main = list(section_pattern.finditer(text, start_offset, glossary_offset))
     chunks = []
-    for i, match_main in enumerate(matches_main):
-        section_header = match_main.group().strip()
-        start_main = match_main.end()
-        end_main = (
-            matches_main[i + 1].start()
-            if i + 1 < len(matches_main)
+
+    # 1. Chunk main rules (from start_offset to glossary_offset)
+    # Find all section headers (e.g., 100. General)
+    section_header_pattern = re.compile(r"^(\d{3}\. .+)$", re.MULTILINE)
+    rule_pattern = re.compile(r"^(\d{3}\.[\da-z]+\.)", re.MULTILINE)
+
+    # Find all section headers and their positions
+    section_headers = list(
+        section_header_pattern.finditer(text, start_offset, glossary_offset)
+    )
+    for idx, section_match in enumerate(section_headers):
+        section_header = section_match.group(1).strip()
+        section_start = section_match.end()
+        section_end = (
+            section_headers[idx + 1].start()
+            if idx + 1 < len(section_headers)
             else glossary_offset
         )
-        chunk_text = text[start_main:end_main].strip()
-        if chunk_text:
-            chunks.append(
-                Document(page_content=chunk_text, metadata={"section": section_header})
+        section_text = text[section_start:section_end]
+        # Find all rules in this section
+        rule_matches = list(rule_pattern.finditer(section_text))
+        for r_idx, rule_match in enumerate(rule_matches):
+            rule_number = rule_match.group(1).strip()
+            rule_start = rule_match.end()
+            rule_end = (
+                rule_matches[r_idx + 1].start()
+                if r_idx + 1 < len(rule_matches)
+                else len(section_text)
             )
+            rule_body = section_text[rule_start:rule_end].strip()
+            if rule_body:
+                page_content = f"{rule_number} {rule_body}"
+                chunks.append(
+                    Document(
+                        page_content=page_content, metadata={"section": section_header}
+                    )
+                )
+
     # 2. Chunk glossary (from glossary_offset to credits_offset) by term
     if glossary_offset and credits_offset:
         glossary_text = text[glossary_offset:credits_offset]
@@ -204,7 +226,6 @@ def load_and_chunk_magic_rules_txt() -> List[Document]:
                 chunks.append(
                     Document(page_content=definition, metadata={"glossary_term": term})
                 )
-    breakpoint()
     return chunks
 
 
@@ -214,7 +235,6 @@ chunks_rulings = load_rulings()
 chunks_rulings_decoded = [decode_json_page_content(chunk) for chunk in chunks_rulings]
 
 all_chunks = chunks_comp_rules + chunks_rulings_decoded
-breakpoint()
 # add_chunks_to_vector_db(chunks_comp_rules, vector_db_comp_rules)
 
 # start_time = time.time()
