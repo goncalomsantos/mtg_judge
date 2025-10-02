@@ -1,17 +1,17 @@
+import json
 import os
 import re
-import json
-from pathlib import Path
-from typing import List, Tuple, Optional
 import time
+from pathlib import Path
+from typing import List, Optional, Tuple
 
 import gradio as gr
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import JSONLoader, TextLoader
+from langchain_core.documents import Document
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveJsonSplitter
-from langchain_core.documents import Document
 
 load_dotenv()
 parent_path = Path(__file__).parent
@@ -102,8 +102,6 @@ def predict(
     # Step 2.1: Embed user query
     user_query = message
 
-    embeddings_user_query = embedding_model.embed_query(user_query)
-    breakpoint()
     # Step 2.2: similarity search
     relevant_chunks = db.similarity_search(user_query, 20)
 
@@ -113,10 +111,12 @@ def predict(
     for relevant_text in relevant_chunks:
         relevant_chunks_text += relevant_text.page_content + "\n"
 
-    chat_history = ""
-
-    for index, messages in enumerate(history):
-        chat_history += f"""User query {index}:{messages[0]} Assistant Response {index}: {messages[1]}"""
+    chat_history_chunks = ""
+    # TODO: check if messages global var is being overwritten
+    for index, chunk in enumerate(history):
+        chat_history_chunks += (
+            f"""User query {index}:{chunk[0]} Assistant Response {index}: {chunk[1]}"""
+        )
 
     # Step 2.4 create prompt
     prompt = f"""
@@ -127,14 +127,15 @@ def predict(
         {relevant_chunks_text}
 
         Chat History:
-        {chat_history}
+        {chat_history_chunks}
     """
 
     # Step 2.5: call LLM
     llm = ChatOpenAI(model="gpt-4o-mini")
 
-    messages = [("human", prompt)]
-
+    global messages
+    messages = messages + [("human", prompt)]
+    breakpoint()
     llm_response = llm.invoke(messages)
 
     return llm_response.content
@@ -229,12 +230,16 @@ def load_and_chunk_magic_rules_txt() -> List[Document]:
     return chunks
 
 
-chunks_comp_rules = load_and_chunk_magic_rules_txt()
-chunks_rulings = load_rulings()
+# TODO: Uncomment this when you want to load the comp rules and rulings
+# TODO: make the load changeable in the terminal
+# chunks_comp_rules = load_and_chunk_magic_rules_txt()
+# chunks_rulings = load_rulings()
+#
+# chunks_rulings_decoded = [decode_json_page_content(chunk) for chunk in chunks_rulings]
+#
+# all_chunks = chunks_comp_rules + chunks_rulings_decoded
 
-chunks_rulings_decoded = [decode_json_page_content(chunk) for chunk in chunks_rulings]
 
-all_chunks = chunks_comp_rules + chunks_rulings_decoded
 # add_chunks_to_vector_db(chunks_comp_rules, vector_db_comp_rules)
 
 # start_time = time.time()
@@ -243,5 +248,5 @@ all_chunks = chunks_comp_rules + chunks_rulings_decoded
 # print(f"Time taken to add all chunks to vector DB: {end_time - start_time:.2f} seconds")
 
 
-# gr.ChatInterface(predict).launch(debug=True)
-gr.ChatInterface(predict_comp_rules).launch(debug=True)
+gr.ChatInterface(predict).launch(debug=True)
+# gr.ChatInterface(predict_comp_rules).launch(debug=True)
